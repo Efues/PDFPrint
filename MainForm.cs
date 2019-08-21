@@ -5,6 +5,8 @@ using System.Windows.Forms;
 using PdfSharp;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using System.Drawing.Printing;
+using System.Drawing;
 
 namespace PDFPrint
 {
@@ -39,7 +41,6 @@ namespace PDFPrint
       var contents = textBoxPDFContents.Text;
       var title = textBoxPDFTitle.Text;
       var outFolder = textBoxPDFExportFolder.Text;
-
       try
       {
         if (textBoxPDFTitle.Text == "")
@@ -63,9 +64,54 @@ namespace PDFPrint
 
     private void buttonPrint_Click(object sender, EventArgs e)
     {
+      var contents = textBoxPDFContents.Text;
+      var title = textBoxPDFTitle.Text;
+      var outFolder = textBoxPDFExportFolder.Text;
+      var printerName = comboBoxPrinters.SelectedItem.ToString();
+      try
+      {
+        if (textBoxPDFTitle.Text == "")
+        {
+          MessageBox.Show("No Title is input.", Properties.Resources.Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+          return;
+        }
+        if (!System.IO.Directory.Exists(outFolder))
+        {
+          MessageBox.Show("Export folder is not exist.", Properties.Resources.Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+          return;
+        }
+
+        var src = ExportPDF(title, contents, outFolder);
+        var folder = System.IO.Path.GetDirectoryName(src);
+        var fileName = System.IO.Path.GetFileNameWithoutExtension(src);
+        var dst = System.IO.Path.Combine(folder, fileName + ".tif");
+        var pc = new ConvertPDF.PDFConvert();
+        pc.OutputFormat = "tifflzw";  // TIFF
+        pc.Convert(src, dst);
+
+        using (var pd = new PrintDocument())
+        {
+          pd.DocumentName = "sample";
+          pd.PrinterSettings.PrinterName = printerName;
+          pd.PrintPage += new PrintPageEventHandler((s, eventArg) =>
+          {
+            using (var img = Image.FromFile(dst))
+            {
+              eventArg.Graphics.DrawImage(img, eventArg.MarginBounds);
+            }
+            eventArg.HasMorePages = false;
+          });
+          pd.Print();
+        }
+        System.IO.File.Delete(dst);
+      }
+      catch (Exception exp)
+      {
+        MessageBox.Show(exp.Message, Properties.Resources.Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
     }
 
-    private static void ExportPDF(string title, string contents, string outFolder)
+    private static string ExportPDF(string title, string contents, string outFolder)
     {
       using (var document = new PdfDocument())
       {
@@ -88,12 +134,13 @@ namespace PDFPrint
             font,
             XBrushes.Black,
             new XRect(0, 0, page.Width, page.Height),
-            XStringFormats.Center // 真ん中に描画
+            XStringFormats.TopLeft
             );
 
         // PDF保存
-        var filename = System.IO.Path.Combine(outFolder, title + ".pdf");
-        document.Save(filename);
+        var filepath = System.IO.Path.Combine(outFolder, title + ".pdf");
+        document.Save(filepath);
+        return filepath;
       }
     }
 
